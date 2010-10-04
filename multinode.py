@@ -1,104 +1,125 @@
 
 import multiprocessing.managers
+from multiprocessing import TimeoutError
 import Queue
 import threading
 
 PORT_NUMBER = 45237
 
+class NodeManager(multiprocessing.managers.BaseManager): pass
+
+#result that is populated by the processor node
+#this is heavily based on the ApplyResult from multiprocessing.Pool module
+class NodeResult(object):
+    def __init__(self):
+        self._cond = threading.Condition(threading.Lock())
+        self._ready = False
+        self._res = None
+        
+    def wait(self, timeout=None):
+        self._cond.acquire()
+        try:
+            if not self._ready:
+                self._cond.wait(timeout)
+        finally:
+            self._cond.release()
+            
+    def ready(self):
+        return self._ready
+
+    def successful(self):
+        assert self._ready
+        return self._success
+        
+    def get(self, timeout=None):
+        #block here until self.res is set
+        self.wait(timeout)
+        if not self._ready:
+            raise TimeoutError
+        if self._success:
+            return self._value
+        else:
+            raise self._value
+            
+    def _set(self, val):
+        self._success, self._value = val
+        self._cond.acquire()
+        try:
+            self._ready = True
+            self._cond.notify()
+        finally:
+            self._cond.release()
+
 class NodeServer(object):
-	
-	class NodeManager(multiprocessing.managers.BaseManager): pass
-	def __init__(self):
-		self.jobqueue = Queue.Queue()
-		self.jobresult = {}
-		self.jobclient = {}
-		NodeManager.register('get_job', callable=lambda:getjob())
-		NodeManager.register('job_count', callable=lambda:jobqueue.qsize())
-		pass
-		
-	def getjob(self):
-		#grab a job from the queue, return it and it's related result
-		job = self.jobqueue.get()
-		return (job, self.jobresult[job])
-	
-	#pool members
-	def apply_async(self, func, args=(), kwargs=None):
+    #pool members
+    def apply_async(self, func, args=(), kwargs=None):
         if not kwargs:
             kwargs = {}
-		#create a job and result
-		job = (func, args, kwargs)
-		result = NodeResult()
-		
-		#map them
-		self.jobresult[job] = result
-		
-		#add the job to the queue
-		self.jobqueue.put(job)
-		
-		#return the result (for the caller to 'get' later)
+        #create a job with a result
+        result = NodeResult()
+        self.jobresult[self.jobindex] = result
+        job = (func, args, kwargs, self.jobindex)
+        self.jobindex += 1
+        
+        #add the job to the queue
+        self.jobqueue.put(job)
+        
+        #return the result (for the caller to 'get' from later)
         return result
-		
+        
     def close(self):
         pass
+        
     def join(self):
-		#possibly block here until there are no jobs in the queue?
+        #possibly block here until there are no jobs in the queue?
         pass
-		
-	#result that is populated by the processor node
-	#this is heavily based on the ApplyResult from multiprocessing.Pool module
-	class NodeResult(object):
-		def __init__(self):
-			self._cond = threading.Condition(threading.Lock())
-			self._ready = False
-			self._res = None
-			
-		def wait(self):
-			self._cond.acquire()
-			try:
-				if not self._ready:
-					self._cond.wait(timeout)
-			finally:
-				self._cond.release()
-				
-		def ready(self):
-			return self._ready
-
-		def successful(self):
-			assert self._ready
-			return self._success
-			
-		def get(self, timeout=None):
-			#block here until self.res is set
-			self.wait(timeout)
-			if not self._ready:
-				raise TimeoutError
-			if self._success:
-				return self._value
-			else:
-				raise self._value
-				
-		def _set(self, val):
-			self._success, self._value = val
-			self._cond.acquire()
-			try:
-				self._ready = True
-				self._cond.notify()
-			finally:
-				self._cond.release()
-			
+    
+    def __init__(self, serve_address, serve_authkey=''):
+        self.jobqueue = Queue.Queue()
+        self.jobresult = {}
+        self.jobindex = 0
+        NodeManager.register('getjob', callable=lambda:self.getjob())
+        NodeManager.register('jobcount', callable=lambda:self.jobqueue.qsize())
+        NodeManager.register('submitjob', callable=lambda id, result: self.jobresult[id]._set(result))
+        self.manager = NodeManager(address=serve_address, authkey=serve_authkey)
+        server_thread = threading.Thread(target=self.manager.get_server().serve_forever)
+        server_thread.setDaemon(True)
+        server_thread.start()
+        
+    def getjob(self):
+        #grab a job from the queue, return it and it's related result
+        job = self.jobqueue.get()
+        return job
+            
 class NodeClient(object):
-	def __init__(self, manager_address, manager_authkey=''):
-		self.address = address
-		self.authkey = authkey
-		self.manager = NodeManager(address=self.address, authkey=self.authkey)
-		self.manager.connect()
-		
-	def go(self):
-		#grab a job
-		job = self.manager.get_job()
-		func = job[0][0]
-		args = job[0][1]
-		kwargs = job[0][2]
-		result = job[1]
-		
-		result._set(func(*args, **kwargs))
+    def __init__(self, manager_address, manager_authkey=''):
+        self.address = manager_address
+        self.authkey = manager_authkey
+        NodeManager.register('getjob')
+        NodeManager.register('jobcount')
+        NodeManager.register('submitjob')
+        self.manager = NodeManager(address=self.address, authkey=self.authkey)
+        self.manager.connect()
+        
+    def go(self):
+        #grab a job (getjob() returns an autoproxy, _getvalue() grabs out the
+        #tuple inside it...
+        job = self.manager.getjob()._getvalue()
+        #this code kind of sucks, magic numbers abound!
+        #the important thing here is that the elements of job are:
+        #       func - the function to call
+        #       args - the args for the function
+        #       kwargs - more args for the function
+        #       resultkey - the key to the result stored at the server
+        
+        func = job[0]
+        args = job[1]
+        kwargs = job[2]
+        resultkey = job[3]
+        
+        #call to func() here does the actual work
+        try:
+            result = (True, func(*args, **kwargs))
+        except Exception, e:
+            result = (False, e)
+        self.manager.submitjob(resultkey, result)
