@@ -212,7 +212,7 @@ class WorldRenderer(object):
             sys.exit(1)
         return all_chunks
 
-    def _render_chunks_async(self, chunks, processes):
+    def _render_chunks_async(self, chunks, pool):
         """Starts up a process pool and renders all the chunks asynchronously.
 
         chunks is a list of (col, row, chunkfile)
@@ -227,50 +227,29 @@ class WorldRenderer(object):
         inclusion_set = self._get_chunk_renderset()
 
         results = {}
-        if processes == 1:
-            # Skip the multiprocessing stuff
-            print "Rendering chunks synchronously since you requested 1 process"
-            for i, (col, row, chunkfile) in enumerate(chunks):
-                if inclusion_set and (col, row) not in inclusion_set:
-                    # Skip rendering, just find where the existing image is
-                    _, imgpath = chunk.ChunkRenderer(chunkfile,
-                            self.cachedir).find_oldimage(False)
-                    if imgpath:
-                        results[(col, row)] = imgpath
-                        continue
+        
+        
+        asyncresults = []
+        for col, row, chunkfile in chunks:
+            if inclusion_set and (col, row) not in inclusion_set:
+                # Skip rendering, just find where the existing image is
+                _, imgpath = chunk.ChunkRenderer(chunkfile,
+                        self.cachedir).find_oldimage(False)
+                if imgpath:
+                    results[(col, row)] = imgpath
+                    continue
 
-                result = chunk.render_and_save(chunkfile, self.cachedir, cave=self.caves)
-                results[(col, row)] = result
-                if i > 0:
-                    if 1000 % i == 0 or i % 1000 == 0:
-                        print "{0}/{1} chunks rendered".format(i, len(chunks))
-        else:
-            print "Rendering chunks in {0} processes".format(processes)
-            pool = multiprocessing.Pool(processes=processes)
-            asyncresults = []
-            for col, row, chunkfile in chunks:
-                if inclusion_set and (col, row) not in inclusion_set:
-                    # Skip rendering, just find where the existing image is
-                    _, imgpath = chunk.ChunkRenderer(chunkfile,
-                            self.cachedir).find_oldimage(False)
-                    if imgpath:
-                        results[(col, row)] = imgpath
-                        continue
+            result = pool.apply_async(chunk.render_and_save,
+                    args=(chunkfile,self.cachedir),
+                    kwds=dict(cave=self.caves))
+            asyncresults.append((col, row, result))
 
-                result = pool.apply_async(chunk.render_and_save,
-                        args=(chunkfile,self.cachedir),
-                        kwds=dict(cave=self.caves))
-                asyncresults.append((col, row, result))
+        for i, (col, row, result) in enumerate(asyncresults):
+            results[(col, row)] = result.get()
+            if i > 0:
+                if 1000 % i == 0 or i % 1000 == 0:
+                    print "{0}/{1} chunks rendered".format(i, len(asyncresults))
 
-            pool.close()
-
-            for i, (col, row, result) in enumerate(asyncresults):
-                results[(col, row)] = result.get()
-                if i > 0:
-                    if 1000 % i == 0 or i % 1000 == 0:
-                        print "{0}/{1} chunks rendered".format(i, len(asyncresults))
-
-            pool.join()
         print "Done!"
 
         return results

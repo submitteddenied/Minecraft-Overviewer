@@ -248,7 +248,7 @@ class QuadtreeGen(object):
 
             yield pool.apply_async(func=render_innertile, args= (dest, name, self.imgformat))
 
-    def go(self, procs):
+    def go(self, pool):
         """Renders all tiles"""
 
         # Make the destination dir
@@ -266,12 +266,6 @@ class QuadtreeGen(object):
                 print "Your map seems to have shrunk. Re-arranging tiles, just a sec..."
                 for _ in xrange(curdepth - self.p):
                     self._decrease_depth()
-
-        # Create a pool
-        if procs == 1:
-            pool = FakePool()
-        else:
-            pool = multiprocessing.Pool(processes=procs)
 
         self.write_html(self.p, self.imgformat)
 
@@ -326,9 +320,6 @@ class QuadtreeGen(object):
 
             print "Done"
 
-        pool.close()
-        pool.join()
-
         # Do the final one right here:
         render_innertile(os.path.join(self.destdir, "tiles"), "base", self.imgformat)
 
@@ -361,7 +352,7 @@ class QuadtreeGen(object):
         return chunklist
 
 @catch_keyboardinterrupt
-def render_innertile(dest, name, imgformat):
+def render_innertile(dest, name, imgformat, environment=None):
     """
     Renders a tile at os.path.join(dest, name)+".ext" by taking tiles from
     os.path.join(dest, name, "{0,1,2,3}.png")
@@ -456,7 +447,7 @@ def render_innertile(dest, name, imgformat):
 
 
 @catch_keyboardinterrupt
-def render_worldtile(chunks, colstart, colend, rowstart, rowend, path, imgformat):
+def render_worldtile(chunks, colstart, colend, rowstart, rowend, path, imgformat, environment=None):
     """Renders just the specified chunks into a tile and save it. Unlike usual
     python conventions, rowend and colend are inclusive. Additionally, the
     chunks around the edges are half-way cut off (so that neighboring tiles
@@ -476,6 +467,10 @@ def render_worldtile(chunks, colstart, colend, rowstart, rowend, path, imgformat
 
     There is no return value
     """
+    if environment is None:
+        base_path = ""
+    else:
+        base_path = environment["base_path"]
     # width of one chunk is 384. Each column is half a chunk wide. The total
     # width is (384 + 192*(numcols-1)) since the first column contributes full
     # width, and each additional one contributes half since they're staggered.
@@ -597,10 +592,10 @@ class FakeResult(object):
 class FakePool(object):
     """A fake pool used to render things in sync. Implements a subset of
     multiprocessing.Pool"""
-    def apply_async(self, func, args=(), kwargs=None):
-        if not kwargs:
-            kwargs = {}
-        result = func(*args, **kwargs)
+    def apply_async(self, func, args=(), kwds=None):
+        if not kwds:
+            kwds = {}
+        result = func(*args, **kwds)
         return FakeResult(result)
     def close(self):
         pass

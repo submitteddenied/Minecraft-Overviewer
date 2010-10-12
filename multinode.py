@@ -52,13 +52,13 @@ class NodeResult(object):
 
 class NodeServer(object):
     #pool members
-    def apply_async(self, func, args=(), kwargs=None):
-        if not kwargs:
-            kwargs = {}
+    def apply_async(self, func, args=(), kwds=None):
+        if not kwds:
+            kwds = {}
         #create a job with a result
         result = NodeResult()
         self.jobresult[self.jobindex] = result
-        job = (func, args, kwargs, self.jobindex)
+        job = (func, args, kwds, self.jobindex)
         self.jobindex += 1
         
         #add the job to the queue
@@ -74,7 +74,7 @@ class NodeServer(object):
         #possibly block here until there are no jobs in the queue?
         pass
     
-    def __init__(self, serve_address, serve_authkey=''):
+    def __init__(self, serve_address=('localhost', PORT_NUMBER), serve_authkey=''):
         self.jobqueue = Queue.Queue()
         self.jobresult = {}
         self.jobindex = 0
@@ -92,7 +92,7 @@ class NodeServer(object):
         return job
             
 class NodeClient(object):
-    def __init__(self, manager_address, manager_authkey=''):
+    def __init__(self, manager_address=('localhost', PORT_NUMBER), manager_authkey='', environment=None):
         self.address = manager_address
         self.authkey = manager_authkey
         NodeManager.register('getjob')
@@ -100,6 +100,8 @@ class NodeClient(object):
         NodeManager.register('submitjob')
         self.manager = NodeManager(address=self.address, authkey=self.authkey)
         self.manager.connect()
+        self.environment = environment
+        self.debug = False
         
     def go(self):
         #grab a job (getjob() returns an autoproxy, _getvalue() grabs out the
@@ -109,17 +111,41 @@ class NodeClient(object):
         #the important thing here is that the elements of job are:
         #       func - the function to call
         #       args - the args for the function
-        #       kwargs - more args for the function
+        #       kwds - more args for the function
         #       resultkey - the key to the result stored at the server
+        
+        if self.debug: print "Got a job!"
         
         func = job[0]
         args = job[1]
-        kwargs = job[2]
+        kwds = job[2]
+        #add the node specific environment information
+        #(or clobber what was passed...)
+        kwds["environment"] = self.environment
         resultkey = job[3]
         
         #call to func() here does the actual work
         try:
-            result = (True, func(*args, **kwargs))
+            result = (True, func(*args, **kwds))
+            if self.debug: print "Job #{0} - complete!".format(resultkey)
         except Exception, e:
             result = (False, e)
+            if self.debug: print "Job #{0} - failed!".format(resultkey)
+        
         self.manager.submitjob(resultkey, result)
+        
+        
+    def run(self):
+        #basically run until this node is killed.
+        #this is designed to be run in a background thread
+        if self.debug: print "Node starting up, connected to manager..."
+        while True:
+            if self.debug:
+                print "waiting for a job"
+            
+            self.go()
+        
+    def startbg(self):
+        self.client_thread = threading.Thread(target=self.run)
+        self.client_thread.setDaemon(True)
+        self.client_thread.start()

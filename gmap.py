@@ -29,6 +29,7 @@ import time
 
 import world
 import quadtree
+import multinode
 
 helptext = """
 %prog [OPTIONS] <World # / Path to World> <tiles dest dir>
@@ -46,9 +47,31 @@ def main():
     parser.add_option("--cachedir", dest="cachedir", help="Sets the directory where the Overviewer will save chunk images, which is an intermediate step before the tiles are generated. You must use the same directory each time to gain any benefit from the cache. If not set, this defaults to your world directory.")
     parser.add_option("--chunklist", dest="chunklist", help="A file containing, on each line, a path to a chunkfile to update. Instead of scanning the world directory for chunks, it will just use this list. Normal caching rules still apply.")
     parser.add_option("--imgformat", dest="imgformat", help="The image output format to use. Currently supported: png(default), jpg. NOTE: png will always be used as the intermediate image format.")
+    parser.add_option("--server", dest="servernode", help="Sets this node to run as a node server, clients will need to connect to this server in order to get any work done.", action="store_true")
+    parser.add_option("--client", dest="clientnode", help="Sets this node to run as a client to some other server, it will do the work for the server", action="store_true")
+    parser.add_option("--address", dest="address", help="Used with --server and --client, sets the address to use in <ip>:<port> format. For --server, sets the address to serve on, for --client, sets the address to connect to.")
+    parser.add_option("--basedir", dest="base_dir", help="Used with --server and --client to specify the mount point for shared storage to be used for both cache and output.")
 
     options, args = parser.parse_args()
-
+    
+    #set up the basedir
+    if options.base_dir:
+        if not os.path.exists(options.base_dir):
+            print "invalid base directory (please create it for me!)"
+        
+    if options.address:
+        address_str = options.address.split(":")
+        address = (address_str[0], int(address_str[1]))
+    
+    if options.clientnode:
+        print "Attempting to connect to server..."
+        #start a client node, connect to server, do jobs until CTRL-C caught
+        #and then exit, no (other) processing to do!
+        client = multinode.NodeClient(address)
+        client.startbg()
+        client.client_thread.join()
+        return
+    
     if len(args) < 1:
         print "You need to give me your world number or directory"
         parser.print_help()
@@ -92,14 +115,31 @@ def main():
             imgformat = options.imgformat
     else:
         imgformat = 'png'
-
+        
+    
+    #determine what kind of pool to use
+    if options.servernode:
+        #we want to set up as a server
+        print "Starting up job server on {0}, port: {1}".format(*address)
+        pool = multinode.NodeServer(address)
+    else:
+        print "Rendering chunks in {0} processes".format(options.procs)
+        pool = multiprocessing.Pool(processes=options.procs)
+    
     # First generate the world's chunk images
     w = world.WorldRenderer(worlddir, cachedir, chunklist=chunklist)
-    w.go(options.procs)
+    w.go(pool)
 
     # Now generate the tiles
     q = quadtree.QuadtreeGen(w, destdir, depth=options.zoom, imgformat=imgformat)
-    q.go(options.procs)
+    q.go(pool)
+    
+    #tidy up the pool
+    print "Cleaning up..."
+    pool.close()
+    pool.join()
+    
+    print "Done"
 
 def delete_all(worlddir, tiledir):
     # First delete all images in the world dir
