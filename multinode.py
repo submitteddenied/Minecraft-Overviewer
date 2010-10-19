@@ -138,14 +138,18 @@ class NodeClient(object):
     def run(self):
         #basically run until this node is killed.
         #this is designed to be run in a background thread
-        if self.debug: print "Node starting up, connected to manager..."
+        if self.debug: print "Worker thread starting up, connected to manager..."
         while True:
             if self.debug:
                 print "waiting for a job"
             
             self.go()
         
-    def startbg(self):
-        self.client_thread = threading.Thread(target=self.run)
-        self.client_thread.setDaemon(True)
-        self.client_thread.start()
+    def startbg(self, procs=1):
+        self.client_threads = []
+        if self.debug: print "Node starting up, spawning {0} worker threads".format(procs)
+        for i in xrange(procs):
+            client_thread = threading.Thread(target=self.run)
+            client_thread.setDaemon(True)
+            client_thread.start()
+            self.client_threads.append(client_thread)
