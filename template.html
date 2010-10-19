@@ -198,6 +198,44 @@
     }
   }
   
+  function SurfaceCaveControl(controlDiv, tiledir, type, map) 
+  {
+    // Set CSS styles for the DIV containing the control
+    // Setting padding to 5 px will offset the control
+    // from the edge of the map
+    controlDiv.style.padding = '5px';
+
+    // Set CSS for the control border
+    var controlUI = document.createElement('DIV');
+    controlUI.style.backgroundColor = 'white';
+    controlUI.style.borderStyle = 'solid';
+    controlUI.style.borderWidth = '2px';
+    controlUI.style.cursor = 'pointer';
+    controlUI.style.textAlign = 'center';
+    controlUI.title = 'Click to set to ' + type + ' mode';
+    controlDiv.appendChild(controlUI);
+
+    // Set CSS for the control interior
+    var controlText = document.createElement('DIV');
+    controlText.style.fontFamily = 'Arial,sans-serif';
+    controlText.style.fontSize = '12px';
+    controlText.style.paddingLeft = '4px';
+    controlText.style.paddingRight = '4px';
+    controlText.innerHTML = type;
+    controlUI.appendChild(controlText);
+
+    // Setup the click event listeners: simply set the map to Chicago
+    google.maps.event.addDomListener(controlUI, 'click', function() 
+    {
+        var zoom = map.getZoom();
+        var center = map.getCenter();
+        config['path'] = tiledir;
+        initialize();
+        map.setZoom(zoom);
+        map.setCenter(center);
+    });
+  }
+  
   function initialize() {
     var mapOptions = {
       zoom: config.defaultZoom,
@@ -224,6 +262,19 @@
 	    console.log("pixel: " + pxx + ", " + pxy);
 	  });
     }
+    
+    // Create the DIV to hold the cave/surface controls
+    var caveControlDiv = document.createElement('DIV');
+    var caveControl = new SurfaceCaveControl(caveControlDiv, 'cave_tiles', 'Cave', map);
+    
+    var surfaceControlDiv = document.createElement('DIV');
+    var surfaceControl = new SurfaceCaveControl(surfaceControlDiv, 'tiles', 'Surface', map);
+
+    caveControlDiv.index = 1;
+    surfaceControlDiv.index = 2;
+    map.controls[google.maps.ControlPosition.TOP_RIGHT].push(surfaceControlDiv);
+    map.controls[google.maps.ControlPosition.TOP_RIGHT].push(caveControlDiv);
+
         
     // Now attach the coordinate map type to the map's registry
     map.mapTypes.set('mcmap', MCMapType);
