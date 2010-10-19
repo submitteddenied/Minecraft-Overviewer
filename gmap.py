@@ -76,8 +76,9 @@ def main():
         #start a client node, connect to server, do jobs until CTRL-C caught
         #and then exit, no (other) processing to do!
         client = multinode.NodeClient(address)
-        client.startbg()
-        client.client_thread.join()
+        client.startbg(options.procs)
+        for thread in client.client_threads:
+            thread.join()
         return
     
     if len(args) < 1:
