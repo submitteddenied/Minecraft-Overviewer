@@ -123,21 +123,6 @@ def main():
             imgformat = options.imgformat
     else:
         imgformat = 'png'
-        
-    
-    #determine what kind of pool to use
-    if options.servernode:
-        #we want to set up as a server
-        print "Starting up job server on {0}, port: {1}".format(*address)
-        pool = multinode.NodeServer(address)
-    else:
-        print "Rendering chunks in {0} processes".format(options.procs)
-        pool = multiprocessing.Pool(processes=options.procs)
-    
-    if options.optimizeimg:
-        optimizeimg = options.optimizeimg
-    else:
-        optimizeimg = None
 
     logging.getLogger().setLevel(
         logging.getLogger().level + 10*options.quiet)
@@ -146,6 +131,21 @@ def main():
 
     logging.info("Welcome to Minecraft Overviewer!")
     logging.debug("Current log level: {0}".format(logging.getLogger().level))
+    
+    if options.optimizeimg:
+        optimizeimg = options.optimizeimg
+    else:
+        optimizeimg = None
+        
+    
+    #determine what kind of pool to use
+    if options.servernode:
+        #we want to set up as a server
+        logging.debug("Starting up job server on {0}, port: {1}".format(*address))
+        pool = multinode.NodeServer(address)
+    else:
+        logging.debug("Rendering chunks in {0} processes".format(options.procs))
+        pool = multiprocessing.Pool(processes=options.procs)
 
     # First generate the world's chunk images
     w = world.WorldRenderer(worlddir, cachedir, chunklist=chunklist)
@@ -157,11 +157,11 @@ def main():
     q.go(pool)
     
     #tidy up the pool
-    print "Cleaning up..."
+    logging.info("Cleaning up...")
     pool.close()
     pool.join()
     
-    print "Done"
+    logging.info("Done")
 
 def delete_all(worlddir, tiledir):
     # First delete all images in the world dir

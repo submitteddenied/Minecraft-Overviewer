@@ -3,6 +3,7 @@ import multiprocessing.managers
 from multiprocessing import TimeoutError
 import Queue
 import threading
+import logging
 
 PORT_NUMBER = 45237
 
@@ -114,7 +115,7 @@ class NodeClient(object):
         #       kwds - more args for the function
         #       resultkey - the key to the result stored at the server
         
-        if self.debug: print "Got a job!"
+        logging.debug("Got a job!")
         
         func = job[0]
         args = job[1]
@@ -127,10 +128,10 @@ class NodeClient(object):
         #call to func() here does the actual work
         try:
             result = (True, func(*args, **kwds))
-            if self.debug: print "Job #{0} - complete!".format(resultkey)
+            logging.debug("Job #{0} - complete!".format(resultkey))
         except Exception, e:
             result = (False, e)
-            if self.debug: print "Job #{0} - failed!".format(resultkey)
+            logging.debug("Job #{0} - failed!".format(resultkey))
         
         self.manager.submitjob(resultkey, result)
         
@@ -138,16 +139,15 @@ class NodeClient(object):
     def run(self):
         #basically run until this node is killed.
         #this is designed to be run in a background thread
-        if self.debug: print "Worker thread starting up, connected to manager..."
+        logging.debug( "Worker thread starting up, connected to manager...")
         while True:
-            if self.debug:
-                print "waiting for a job"
+            logging.debug("waiting for a job")
             
             self.go()
         
     def startbg(self, procs=1):
         self.client_threads = []
-        if self.debug: print "Node starting up, spawning {0} worker threads".format(procs)
+        logging.debug("Node starting up, spawning {0} worker threads".format(procs))
         for i in xrange(procs):
             client_thread = threading.Thread(target=self.run)
             client_thread.setDaemon(True)
