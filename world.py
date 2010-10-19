@@ -18,9 +18,9 @@ import os
 import os.path
 import multiprocessing
 import sys
+import logging
 
 import numpy
-from PIL import Image
 
 import chunk
 import nbt
@@ -121,6 +121,11 @@ class WorldRenderer(object):
                 chunklist.append((base36decode(p[1]), base36decode(p[2]),
                     path))
 
+        if not chunklist:
+            logging.error("No valid chunks specified in your chunklist!")
+            logging.error("HINT: chunks are in your world directory and have names of the form 'c.*.*.dat'")
+            sys.exit(1)
+
         # Translate to col, row coordinates
         _, _, _, _, chunklist = _convert_coords(chunklist)
 
@@ -147,10 +152,8 @@ class WorldRenderer(object):
         chunkY = spawnZ/16
 
         ## The filename of this chunk
-        chunkFile = "%s/%s/c.%s.%s.dat" % (base36encode(chunkX % 64), 
-                                           base36encode(chunkY % 64),
-                                           base36encode(chunkX),
-                                           base36encode(chunkY))
+        chunkFile = os.path.join(base36encode(chunkX % 64), base36encode(chunkY % 64),
+              "c.%s.%s.dat" % (base36encode(chunkX), base36encode(chunkY)))
 
 
         data=nbt.load(os.path.join(self.worlddir, chunkFile))[1]
@@ -168,17 +171,18 @@ class WorldRenderer(object):
 
         self.POI.append( dict(x=spawnX, y=spawnY, z=spawnZ, msg="Spawn"))
 
-    def go(self, procs):
+    def go(self, pool):
         """Starts the render. This returns when it is finished"""
         
-        print "Scanning chunks"
+        logging.info("Scanning chunks")
         raw_chunks = self._find_chunkfiles()
+        logging.debug("Done scanning chunks")
 
         # Translate chunks to our diagonal coordinate system
         mincol, maxcol, minrow, maxrow, chunks = _convert_coords(raw_chunks)
         del raw_chunks # Free some memory
 
-        self.chunkmap = self._render_chunks_async(chunks, procs)
+        self.chunkmap = self._render_chunks_async(chunks, pool)
 
         self.mincol = mincol
         self.maxcol = maxcol
@@ -208,7 +212,7 @@ class WorldRenderer(object):
                             os.path.join(dirpath, f)))
 
         if not all_chunks:
-            print "Error: No chunks found!"
+            logging.error("Error: No chunks found!")
             sys.exit(1)
         return all_chunks
 
@@ -227,8 +231,6 @@ class WorldRenderer(object):
         inclusion_set = self._get_chunk_renderset()
 
         results = {}
-        
-        
         asyncresults = []
         for col, row, chunkfile in chunks:
             if inclusion_set and (col, row) not in inclusion_set:
@@ -248,9 +250,9 @@ class WorldRenderer(object):
             results[(col, row)] = result.get()
             if i > 0:
                 if 1000 % i == 0 or i % 1000 == 0:
-                    print "{0}/{1} chunks rendered".format(i, len(asyncresults))
+                    logging.info("{0}/{1} chunks rendered".format(i, len(asyncresults)))
 
-        print "Done!"
+        logging.info("Done!")
 
         return results
 
