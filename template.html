@@ -230,16 +230,22 @@
         var zoom = map.getZoom();
         var center = map.getCenter();
         config['path'] = tiledir;
-        initialize();
-        map.setZoom(zoom);
-        map.setCenter(center);
+        initialize(zoom, center);
     });
   }
   
-  function initialize() {
+  function initialize(zoom, center) {
+    if(!zoom) {
+      zoom = config.defaultZoom;
+    }
+    
+    if(!center) {
+      center = new google.maps.LatLng(0.5, 0.5);
+    }
+    
     var mapOptions = {
-      zoom: config.defaultZoom,
-      center: new google.maps.LatLng(0.5, 0.5),
+      zoom: zoom,
+      center: center,
       navigationControl: true,
       scaleControl: false,
       mapTypeControl: false,
