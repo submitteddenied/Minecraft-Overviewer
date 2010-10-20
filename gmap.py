@@ -55,6 +55,7 @@ def main():
     parser.add_option("-q", "--quiet", dest="quiet", action="count", default=0, help="Print less output. You can specify this option multiple times.")
     parser.add_option("-v", "--verbose", dest="verbose", action="count", default=0, help="Print more output. You can specify this option multiple times.")
     parser.add_option("--skip-js", dest="skipjs", action="store_true", help="Don't output marker.js or regions.js")
+    parser.add_option("--caves", dest="caves", action="store_true", help="Render caves instead of normal view")
 
     options, args = parser.parse_args()
 
@@ -116,7 +117,7 @@ def main():
     logging.debug("Current log level: {0}".format(logging.getLogger().level))
 
     # First generate the world's chunk images
-    w = world.WorldRenderer(worlddir, cachedir, chunklist=chunklist, lighting=options.lighting, night=options.night)
+    w = world.WorldRenderer(worlddir, cachedir, chunklist=chunklist, lighting=options.lighting, night=options.night, caves=options.caves)
     w.go(options.procs)
 
     # Now generate the tiles
@@ -126,7 +127,7 @@ def main():
 
 def delete_all(worlddir, tiledir):
     # First delete all images in the world dir
-    imgre = r"img\.[^.]+\.[^.]+\.nocave\.\w+\.png$"
+    imgre = r"img\.[^.]+\.[^.]+\.(no)?cave\.\w+\.png$"
     matcher = re.compile(imgre)
 
     for dirpath, dirnames, filenames in os.walk(worlddir):
