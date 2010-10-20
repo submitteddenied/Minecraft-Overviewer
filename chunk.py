@@ -536,7 +536,7 @@ class ChunkRenderer(object):
                 # If it's on the facing edge, only render if what's
                 # above it is transparent
                 if (
-                    0<=(z+1)<128 and
+                    z != 127 and
                     blocks[x,y,z+1] not in transparent_blocks
                 ):
                     continue
